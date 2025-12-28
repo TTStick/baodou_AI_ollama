@@ -157,6 +157,8 @@ if is_mac_app():
         SCREENSHOT_CONFIG["output_path"] = get_resource_file_path(SCREENSHOT_CONFIG["output_path"])
         log_print(f"Mac App环境，修改输出路径为: {SCREENSHOT_CONFIG['output_path']}")
 
+
+
 # 在文件开头导入后添加
 pyautogui.FAILSAFE = MOUSE_CONFIG["failsafe"]  # 禁用安全机制
 
@@ -180,8 +182,15 @@ def read_local_image(image_path):
         _, buffer = cv2.imencode('.png', img)
         img_base64 = base64.b64encode(buffer).decode('utf-8')
         
-        # 返回data URL格式的图片数据
-        return f"data:image/png;base64,{img_base64}"
+        if API_CONFIG["base_url"] == "https://ark.cn-beijing.volces.com/api/v3":
+            # 返回data URL格式的图片数据
+            return f"data:image/png;base64,{img_base64}"
+        elif API_CONFIG["base_url"] == "https://api.mindcraft.com.cn/v1/":
+            # 返回base64编码的图片数据
+            return img_base64
+        else:
+            # 返回data URL格式的图片数据
+            return f"data:image/png;base64,{img_base64}"
     except Exception as e:
         log_print(f"读取图片时出错: {e}")
         return None
@@ -267,26 +276,47 @@ def get_next_element(user_content):
             system_content = file.read().strip()
     #log_print(f"系统内容：{system_content}")
 
-    completion = client.beta.chat.completions.parse(
-        model=API_CONFIG["model_name"],  # 此处以doubao-1-5-ui-tars-250428为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
-        messages=[
-            {"role": "system",
-            "content": system_content},
-            {"role": "user",
-            "content": [{"type": "image_url",
-                        "image_url": {"url": image_data_url},},
-                        {"type": "text", "text": user_content}]}],
-        #stream=True,
-        # extra_body={'enable_thinking': False,
-        #             "vl_high_resolution_images":True},
-        # response_format={"type": "json_object"}
-        response_format=MathResponse,
-        extra_body={
-        "thinking": {
-            "type": AI_CONFIG["thinking_type"]  # 从配置文件获取深度思考设置
+    # 如果base_url为火山引擎，就按照火山引擎的格式
+    if API_CONFIG["base_url"] == "https://ark.cn-beijing.volces.com/api/v3":
+        print("火山引擎")
+        completion = client.beta.chat.completions.parse(
+            model=API_CONFIG["model_name"],  # 此处以doubao-1-5-ui-tars-250428为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
+            messages=[
+                {"role": "system",
+                "content": system_content},
+                {"role": "user",
+                "content": [{"type": "image_url",
+                            "image_url": {"url": image_data_url},},
+                            {"type": "text", "text": user_content}]}],
+            #stream=True,
+            # extra_body={'enable_thinking': False,
+            #             "vl_high_resolution_images":True},
+            # response_format={"type": "json_object"}
+            response_format=MathResponse,
+            extra_body={
+            "thinking": {
+                "type": AI_CONFIG["thinking_type"]  # 从配置文件获取深度思考设置
+            },
         },
-    },
-    )
+        )
+    # 如果不是火山引擎的url
+    else:
+        print(f"非火山引擎，模型是{API_CONFIG['model_name']}")
+        completion = client.chat.completions.parse(
+            model=API_CONFIG["model_name"],  # 此处以doubao-1-5-ui-tars-250428为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
+            messages=[
+                {"role": "system",
+                "content": system_content},
+                {"role": "user",
+                "content": [{"type": "image_url",
+                            "image_url": {"url": image_data_url},},
+                            {"type": "text", "text": user_content}]}],
+            #stream=True,
+            # extra_body={'enable_thinking': False,
+            #             "vl_high_resolution_images":True},
+            # response_format={"type": "json_object"}
+            response_format=MathResponse
+        )
 
     log_print(completion.choices[0].message.content)
     return completion.choices[0].message.content
@@ -457,7 +487,7 @@ def move_mouse_to_coordinates(coordinates, action, type_information, duration=MO
         action_str = f"鼠标已移动到拖拽起点: ({start_x}, {start_y})"+"\n"
         
         # 按下鼠标左键并拖动到终点
-        pyautogui.dragTo(end_x, end_y, duration=duration*10)
+        pyautogui.dragTo(end_x, end_y, duration=duration*10, button='left')
         log_print(f"已完成拖拽操作: ({start_x}, {start_y}) -> ({end_x}, {end_y})")
         action_str = action_str + f"已完成拖拽操作: ({start_x}, {start_y}) -> ({end_x}, {end_y})"+"\n"
         
@@ -496,7 +526,7 @@ def move_mouse_to_coordinates(coordinates, action, type_information, duration=MO
             log_print(f"已双击 ({x}, {y})")
             action_str = action_str + f"已双击 ({x}, {y})"+"\n" 
         elif action == "long_press":
-            pyautogui.mouseDown()
+            pyautogui.mouseDown(button='left')
             log_print(f"已长按 ({x}, {y})")
             action_str = action_str + f"已长按 ({x}, {y})"+"\n" 
         elif action == "right_click":
