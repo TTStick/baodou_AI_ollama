@@ -197,6 +197,7 @@ def read_local_image(image_path):
 
 class MathResponse(BaseModel):
     current_status: str
+    solving_problem: str
     whether_completed: str
     element_info: str
     coordinates: list
@@ -383,7 +384,7 @@ def parse_json(json_str):
         return None
 
 # 控制鼠标函数
-def move_mouse_to_coordinates(coordinates, action, type_information, duration=MOUSE_CONFIG["move_duration"], scale=1):
+def move_mouse_to_coordinates(coordinates, solving_problem, action, type_information, duration=MOUSE_CONFIG["move_duration"], scale=1):
     """
     将鼠标移动到指定坐标点并执行相应操作
     :param coordinates: 目标坐标，可以是单点[x, y]或拖拽坐标[[x1, y1], [x2, y2]]
@@ -445,13 +446,27 @@ def move_mouse_to_coordinates(coordinates, action, type_information, duration=MO
                 # 在macOS上将win键替换为command键
                 keys = ["command" if key == "win" or key == "meta" else key for key in keys]
                 keys = ["command" if key == "cmd" else key for key in keys]
+
+                log_print(f"执行热键操作: {'+'.join(keys)}")
+                # 分开执行热键：先按住第一个键，再按其他键，最后释放第一个键
+                if len(keys) > 0:
+                    pyautogui.keyDown(keys[0])
+                    for key in keys[1:]:
+                        pyautogui.press(key)
+                    pyautogui.keyUp(keys[0])
+                action_str = f"执行热键操作: {'+'.join(keys)}"+"\n"
             else:  # Windows和其他系统
                 # 在Windows上将meta键替换为win键
                 keys = ["win" if key == "meta" else key for key in keys]
             
-            log_print(f"执行热键操作: {'+'.join(keys)}")
-            pyautogui.hotkey(*keys)
-            action_str = f"执行热键操作: {'+'.join(keys)}"+"\n"
+                log_print(f"执行热键操作: {'+'.join(keys)}")
+                # 分开执行热键：先按住第一个键，再按其他键，最后释放第一个键
+                if len(keys) > 0:
+                    pyautogui.keyDown(keys[0])
+                    for key in keys[1:]:
+                        pyautogui.press(key)
+                    pyautogui.keyUp(keys[0])
+                action_str = f"执行热键操作: {'+'.join(keys)}"+"\n"
         else:
             log_print("热键操作但未提供快捷键信息")
         return action_str, None
@@ -552,6 +567,24 @@ def move_mouse_to_coordinates(coordinates, action, type_information, duration=MO
         # 根据操作系统执行粘贴
         current_os = platform.system()
         time.sleep(0.1)
+
+        if action == "type_replace":
+            pyautogui.click()
+            log_print(f"已点击 ({x}, {y})")
+            
+            if current_os == "Darwin":  # macOS
+                # macOS上使用更可靠的粘贴方法
+                # 先确保焦点在正确的输入框中
+                time.sleep(0.2)
+                # 使用keydown和keyup确保按键持续时间足够
+                pyautogui.keyDown('command')
+                time.sleep(0.1)
+                pyautogui.press('a')
+                time.sleep(0.1)
+                pyautogui.keyUp('command')
+            else:
+                pyautogui.hotkey('ctrl', 'a')            
+
         if current_os == "Darwin":  # macOS
             # macOS上使用更可靠的粘贴方法
             # 先确保焦点在正确的输入框中
@@ -567,12 +600,15 @@ def move_mouse_to_coordinates(coordinates, action, type_information, duration=MO
         
         log_print(f"已粘贴: {type_information}")
         time.sleep(0.5)
-        pyautogui.press('enter')
-        time.sleep(0.5)
-        log_print("已发送")
-        action_str = action_str + f"已发送: {type_information}"+"\n" 
+  
+        # pyautogui.press('enter')
+        # time.sleep(0.5)
+        # log_print("已发送")
+        # action_str = action_str + f"已发送: {type_information}"+"\n" 
+        action_str = action_str + f"已粘贴: {type_information}"+"\n"
     # 将鼠标快速移动到屏幕的最左上角
-    pyautogui.moveTo(0, 0, duration=duration)
+    if solving_problem == "True":   
+        pyautogui.moveTo(0, 0, duration=duration)
     time.sleep(1.5)
 
     return action_str, mapped_coordinates
@@ -642,6 +678,7 @@ def auto_control_computer(user_content, max_visual_model_iterations=EXECUTION_CO
             if next_element:
                 next_element = parse_json(next_element)
                 current_status = next_element.get('current_status', '未知状态')
+                solving_problem = next_element.get('solving_problem', 'False')
                 whether_completed = next_element.get('whether_completed', 'difficult')
                 element_info = next_element.get('element_info', '未知元素')
                 coordinates = next_element.get('coordinates', [0, 0])
@@ -687,7 +724,7 @@ def auto_control_computer(user_content, max_visual_model_iterations=EXECUTION_CO
                     same_coordinate_count = 0
                     recent_coordinates = []
                     
-                action_str, mapped_coordinates = move_mouse_to_coordinates(coordinates, action, type_information, scale=scale)
+                action_str, mapped_coordinates = move_mouse_to_coordinates(coordinates, solving_problem, action, type_information, scale=scale)
                 # 标记坐标点
                 if mapped_coordinates:
                     # 获取图像实际宽高
