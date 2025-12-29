@@ -403,15 +403,20 @@ def move_mouse_to_coordinates(coordinates, solving_problem, action, type_informa
     def fix_coordinates(coords):
         """修复坐标数据，确保其格式正确且值在合理范围内"""
         if isinstance(coords[0], list):
-            # 拖拽坐标 [[x1, y1], [x2, y2]]
-            return [
-                [validate_coordinate(coords[0][0]), validate_coordinate(coords[0][1])],
-                [validate_coordinate(coords[1][0]), validate_coordinate(coords[1][1])]
-            ]
+            if len(coords) == 1:
+                return [validate_coordinate(coords[0][0]), validate_coordinate(coords[0][1])]
+            else:
+                # 拖拽坐标 [[x1, y1], [x2, y2]]
+                return [
+                    [validate_coordinate(coords[0][0]), validate_coordinate(coords[0][1])],
+                    [validate_coordinate(coords[1][0]), validate_coordinate(coords[1][1])]
+                ]
         else:
             # 单点坐标 [x, y]
             return [validate_coordinate(coords[0]), validate_coordinate(coords[1])]
     
+    # 判断操作系统
+    current_os = platform.system()
     # 修复坐标
     coordinates = fix_coordinates(coordinates)
     # 先处理页面加载状态
@@ -441,7 +446,6 @@ def move_mouse_to_coordinates(coordinates, solving_problem, action, type_informa
             keys = type_information.split()
             
             # 根据操作系统处理快捷键
-            current_os = platform.system()
             if current_os == "Darwin":  # macOS
                 # 在macOS上将win键替换为command键
                 keys = ["command" if key == "win" or key == "meta" else key for key in keys]
@@ -531,6 +535,11 @@ def move_mouse_to_coordinates(coordinates, solving_problem, action, type_informa
         # 保存映射后的坐标
         mapped_coordinates = [x, y]
         
+        # 滚轮幅度
+        if current_os == "Darwin":
+            scroll_range = 10
+        else:
+            scroll_range = 500
         # 执行相应操作
         if action == "click":
             pyautogui.click()
@@ -549,13 +558,13 @@ def move_mouse_to_coordinates(coordinates, solving_problem, action, type_informa
             log_print(f"已右键点击 ({x}, {y})")
             action_str = action_str + f"已右键点击 ({x}, {y})"+"\n" 
         elif action == "scroll_up":
-            pyautogui.scroll(500)
-            log_print(f"已向上滚动 ({x}, {y})")
-            action_str = action_str + f"已向上滚动 ({x}, {y})"+"\n" 
+            pyautogui.scroll(scroll_range)
+            log_print(f"已向上滚动 {scroll_range}")
+            action_str = action_str + f"已向上滚动 {scroll_range}"+"\n" 
         elif action == "scroll_down":
-            pyautogui.scroll(-500)
-            log_print(f"已向下滚动 ({x}, {y})")
-            action_str = action_str + f"已向下滚动 ({x}, {y})"+"\n" 
+            pyautogui.scroll(-1*scroll_range)
+            log_print(f"已向下滚动{scroll_range}")
+            action_str = action_str + f"已向下滚动 {scroll_range}"+"\n" 
         else:
             log_print(f"未知操作: {action}")
     
@@ -565,7 +574,6 @@ def move_mouse_to_coordinates(coordinates, solving_problem, action, type_informa
         pyperclip.copy(type_information)
         
         # 根据操作系统执行粘贴
-        current_os = platform.system()
         time.sleep(0.1)
 
         if action == "type_replace":
