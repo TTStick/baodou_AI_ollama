@@ -303,8 +303,27 @@ def get_next_element(user_content):
     # 如果不是火山引擎的url
     else:
         print(f"非火山引擎，模型是{API_CONFIG['model_name']}")
-        completion = client.chat.completions.parse(
-            model=API_CONFIG["model_name"],  # 此处以doubao-1-5-ui-tars-250428为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
+        # completion = client.chat.completions.parse(
+        #     model=API_CONFIG["model_name"],  # 此处以doubao-1-5-ui-tars-250428为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
+        #     messages=[
+        #         {"role": "system",
+        #         "content": system_content},
+        #         {"role": "user",
+        #         "content": [{"type": "image_url",
+        #                     "image_url": {"url": image_data_url},},
+        #                     {"type": "text", "text": user_content}]}],
+        #     #stream=True,
+        #     # extra_body={'enable_thinking': False,
+        #     #             "vl_high_resolution_images":True},
+        #     # response_format={"type": "json_object"}
+        #     response_format=MathResponse,
+        #     # extra_body={
+        #     # "enable_thinking": False # 禁用思考模式
+        #     # },
+        # )
+        # 使用普通的 create 方法获取原始响应
+        completion_raw = client.chat.completions.create(
+            model=API_CONFIG["model_name"],
             messages=[
                 {"role": "system",
                 "content": system_content},
@@ -312,12 +331,22 @@ def get_next_element(user_content):
                 "content": [{"type": "image_url",
                             "image_url": {"url": image_data_url},},
                             {"type": "text", "text": user_content}]}],
-            #stream=True,
-            # extra_body={'enable_thinking': False,
-            #             "vl_high_resolution_images":True},
-            # response_format={"type": "json_object"}
-            response_format=MathResponse
         )
+        
+        # 获取原始内容
+        raw_content = completion_raw.choices[0].message.content
+        log_print(f"AI 原始返回内容: {raw_content}")
+        
+        # 使用 parse_json 函数解析（会自动处理 markdown 标记）
+        parsed_json = parse_json(raw_content)
+        
+        if parsed_json:
+            log_print("手动解析成功！")
+            # 将解析后的 JSON 转换回字符串返回
+            return json.dumps(parsed_json, ensure_ascii=False)
+        else:
+            log_print("手动解析失败，无法处理 AI 返回的内容")
+            return None
 
     log_print(completion.choices[0].message.content)
     return completion.choices[0].message.content
@@ -503,12 +532,12 @@ def move_mouse_to_coordinates(coordinates, solving_problem, action, type_informa
         # 执行拖拽操作
         pyautogui.moveTo(start_x, start_y, duration=duration)
         log_print(f"鼠标已移动到拖拽起点: ({start_x}, {start_y})")
-        action_str = f"鼠标已移动到拖拽起点: ({start_x}, {start_y})"+"\n"
+        action_str = f"鼠标已移动到拖拽起点"+"\n"
         
         # 按下鼠标左键并拖动到终点
         pyautogui.dragTo(end_x, end_y, duration=duration*10, button='left')
         log_print(f"已完成拖拽操作: ({start_x}, {start_y}) -> ({end_x}, {end_y})")
-        action_str = action_str + f"已完成拖拽操作: ({start_x}, {start_y}) -> ({end_x}, {end_y})"+"\n"
+        action_str = action_str + f"已完成拖拽操作"+"\n"
         
         # 保存映射后的坐标
         mapped_coordinates = [[start_x, start_y], [end_x, end_y]]
@@ -530,7 +559,7 @@ def move_mouse_to_coordinates(coordinates, solving_problem, action, type_informa
         # 移动鼠标
         pyautogui.moveTo(x, y, duration=duration)
         log_print(f"鼠标已移动到坐标: ({x}, {y})")
-        action_str = f"鼠标已移动到坐标: ({x}, {y})"+"\n"
+        action_str = f"鼠标已移动到坐标"+"\n"
         
         # 保存映射后的坐标
         mapped_coordinates = [x, y]
@@ -544,19 +573,19 @@ def move_mouse_to_coordinates(coordinates, solving_problem, action, type_informa
         if action == "click":
             pyautogui.click()
             log_print(f"已点击 ({x}, {y})")
-            action_str = action_str + f"已点击 ({x}, {y})"+"\n"
+            action_str = action_str + f"已点击 "+"\n"
         elif action == "double_click":
             pyautogui.doubleClick()
             log_print(f"已双击 ({x}, {y})")
-            action_str = action_str + f"已双击 ({x}, {y})"+"\n" 
+            action_str = action_str + f"已双击 "+"\n" 
         elif action == "long_press":
             pyautogui.mouseDown(button='left')
             log_print(f"已长按 ({x}, {y})")
-            action_str = action_str + f"已长按 ({x}, {y})"+"\n" 
+            action_str = action_str + f"已长按 "+"\n" 
         elif action == "right_click":
             pyautogui.rightClick()
             log_print(f"已右键点击 ({x}, {y})")
-            action_str = action_str + f"已右键点击 ({x}, {y})"+"\n" 
+            action_str = action_str + f"已右键点击 "+"\n" 
         elif action == "scroll_up":
             pyautogui.scroll(scroll_range)
             log_print(f"已向上滚动 {scroll_range}")
@@ -609,11 +638,11 @@ def move_mouse_to_coordinates(coordinates, solving_problem, action, type_informa
         log_print(f"已粘贴: {type_information}")
         time.sleep(0.5)
   
-        # pyautogui.press('enter')
-        # time.sleep(0.5)
-        # log_print("已发送")
-        # action_str = action_str + f"已发送: {type_information}"+"\n" 
-        action_str = action_str + f"已粘贴: {type_information}"+"\n"
+        pyautogui.press('enter')
+        time.sleep(0.5)
+        log_print("已发送")
+        action_str = action_str + f"已发送: {type_information}"+"\n" 
+        # action_str = action_str + f"已粘贴: {type_information}"+"\n"
     # 将鼠标快速移动到屏幕的最左上角
     if solving_problem == "True":   
         pyautogui.moveTo(0, 0, duration=duration)

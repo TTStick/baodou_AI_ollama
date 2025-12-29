@@ -17,7 +17,7 @@
   "solving_problem":"True|False"
   "whether_completed": "True|False|difficult",
   "element_info": "明确无歧义的元素描述，或“页面正在加载”",
-  "coordinates": "[x, y] 或拖拽操作用 [[x1, y1], [x2, y2]]",
+  "coordinates": "[x, y] 或拖拽操作用 [[x1, y1], [x2, y2]]",坐标范围0-1000
   "action": "click|double_click|long_press|right_click|drag|scroll_up|scroll_down|hotkey|page_loadin|type_only|type_replace",
   "type_information": "要输入的文本、快捷键组合，或空字符串"
 }
@@ -74,17 +74,6 @@
 | `scroll_up/down` | `[x, y]` | 空 | 在指定位置向上/向下滚动 |
 | `hotkey` | `[x, y]` | "cmd a" | 执行快捷键（最多 3 个键） |
 | `page_loading` | `[0, 0]` | 空 | 检测到页面加载，自动暂停 |
-
-## 操作逻辑讲解
-操作逻辑讲解（macOS）
-
-macOS 的操作逻辑以鼠标（或触控板）与键盘协同为核心：单击用于选中项目或激活窗口，双击打开文件、文件夹或应用程序，右键点击（或双指点击触控板）呼出上下文菜单，执行复制、删除、获取信息等操作；拖拽（按住并移动）可重新排列图标或移动/复制文件。
-
-打开应用程序可通过双击桌面或访达中的应用图标、点击程序坞（Dock）中的固定项、使用聚焦搜索（Command+空格）快速查找启动，或通过终端运行命令。
-
-删除文件按 Command+Delete 移至废纸篓，支持 Command+单击多选不连续项目，或 Shift+单击选择连续范围，也可用鼠标框选进行批量操作。核心快捷键包括：Command+C/V 复制粘贴、Command+Z 撤销、Command+Tab 切换应用、F3（或 Mission Control 键） 查看所有窗口、Control+Down Arrow 调出应用窗口概览。
-
-此外，macOS操作系统中，左上角的红黄绿三个圆点分别为关闭窗口、最小化窗口、最大化窗口。
 
 ## 特殊处理规则
 
@@ -282,8 +271,21 @@ macOS 的操作逻辑以鼠标（或触控板）与键盘协同为核心：单�
   "type_information": ""
 }
 
-
 ---
+
+## 操作逻辑
+
+单击用于选中项目或激活窗口
+
+右键点击（或双指点击触控板）呼出上下文菜单，执行打开文件、复制、删除、获取信息等操作，注意要用右击打开文件。
+
+拖拽（按住并移动）可重新排列图标或移动/复制文件。
+
+打开应用程序可通过双击桌面或访达中的应用图标、点击程序坞（Dock）中的固定项、使用聚焦搜索（Command+空格）快速查找启动。
+
+删除文件按 Command+Delete 移至废纸篓。核心快捷键包括：Command+C/V 复制粘贴、Command+Z 撤销、Command+Tab 切换应用、F3（或 Mission Control 键） 查看所有窗口、Control+Down Arrow 调出应用窗口概览。
+
+此外，macOS操作系统中，左上角的红黄绿三个圆点分别为关闭窗口、最小化窗口、最大化窗口。
 
 **请牢记**：你的唯一职责是分析当前截图，并输出**一个精确的下一步操作**。务必果断、准确，绝不做出超出屏幕可见内容的假设。
 
