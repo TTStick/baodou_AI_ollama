@@ -22,6 +22,9 @@ should_exit = False
 # 全局回调函数，用于通知主窗口AI输出的坐标
 coordinate_callback = None
 
+# 全局客户端实例，用于中断API调用
+_global_client = None
+
 current_os = platform.system()
 
 # 尝试导入日志窗口模块
@@ -70,12 +73,36 @@ def log_print(*args, **kwargs):
 def set_coordinate_callback(callback):
     global coordinate_callback
     coordinate_callback = callback
-
+# 停止客户端连接
+def stop_client():
+    global _global_client, should_exit
+    # 设置退出标志，让正在进行的API调用自然退出
+    should_exit = True
+    log_print("已设置退出标志，等待API调用完成...")
+    
+    # 尝试关闭客户端连接
+    if _global_client is not None:
+        try:
+            log_print("正在关闭与远程AI服务器的连接...")
+            _global_client.close()
+            log_print("已关闭客户端连接")
+        except Exception as e:
+            log_print(f"关闭客户端连接时出错: {e}")
+        finally:
+            _global_client = None
 # 信号处理函数
 def signal_handler(sig, frame):
-    global should_exit
-    log_print("\n收到中断信号，正在优雅退出...")
+    global should_exit, _global_client
+    log_print("\n\n收到中断信号 (Ctrl+C)，正在立即停止执行...")
     should_exit = True
+
+    # 尝试中断API调用
+    stop_client()
+    
+    # 强制退出程序
+    import sys
+    log_print("程序已停止")
+    sys.exit(0)
 
 # 设置信号处理器
 # 所有系统都支持SIGINT信号（Ctrl+C）
@@ -158,7 +185,6 @@ if is_mac_app():
         log_print(f"Mac App环境，修改输出路径为: {SCREENSHOT_CONFIG['output_path']}")
 
 
-
 # 在文件开头导入后添加
 pyautogui.FAILSAFE = MOUSE_CONFIG["failsafe"]  # 禁用安全机制
 
@@ -206,6 +232,7 @@ class MathResponse(BaseModel):
 
 # 读取本地图片
 def get_next_element(user_content):
+    global _global_client
     # 重新加载配置文件，确保使用最新的API密钥
     global API_CONFIG, AI_CONFIG, EXECUTION_CONFIG, SCREENSHOT_CONFIG, MOUSE_CONFIG
     config = load_config()
@@ -256,6 +283,11 @@ def get_next_element(user_content):
     
     log_print("\n正在初始化OpenAI客户端并调用多模态模型分析图片...")
     
+    # 检查是否收到中断信号
+    if should_exit:
+        log_print("检测到退出标志，跳过API调用")
+        return None
+    
     client = OpenAI(
     # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
     # 新加坡和北京地域的API Key不同。获取API Key：https://help.aliyun.com/zh/model-studio/get-api-key
@@ -264,6 +296,9 @@ def get_next_element(user_content):
     # 以下为北京地域url，若使用新加坡地域的模型，需将url替换为：https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/text-generation/generation
     base_url=API_CONFIG["base_url"],
     )
+    
+    # 保存客户端实例到全局变量，以便中断时关闭连接
+    _global_client = client
 
     # 读取get_next_action_AI_doubao.txt文件
     if current_os == "Darwin":  # macOS
@@ -280,75 +315,98 @@ def get_next_element(user_content):
     # 如果base_url为火山引擎，就按照火山引擎的格式
     if API_CONFIG["base_url"] == "https://ark.cn-beijing.volces.com/api/v3":
         print("火山引擎")
-        completion = client.beta.chat.completions.parse(
-            model=API_CONFIG["model_name"],  # 此处以doubao-1-5-ui-tars-250428为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
-            messages=[
-                {"role": "system",
-                "content": system_content},
-                {"role": "user",
-                "content": [{"type": "image_url",
-                            "image_url": {"url": image_data_url},},
-                            {"type": "text", "text": user_content}]}],
-            #stream=True,
-            # extra_body={'enable_thinking': False,
-            #             "vl_high_resolution_images":True},
-            # response_format={"type": "json_object"}
-            response_format=MathResponse,
-            extra_body={
-            "thinking": {
-                "type": AI_CONFIG["thinking_type"]  # 从配置文件获取深度思考设置
+        
+        # 检查是否收到中断信号
+        if should_exit:
+            log_print("检测到退出标志，取消API调用")
+            _global_client = None
+            return None
+        
+        try:
+            completion = client.beta.chat.completions.parse(
+                model=API_CONFIG["model_name"],  # 此处以doubao-1-5-ui-tars-250428为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
+                messages=[
+                    {"role": "system",
+                    "content": system_content},
+                    {"role": "user",
+                    "content": [{"type": "image_url",
+                                "image_url": {"url": image_data_url},},
+                                {"type": "text", "text": user_content}]}],
+                #stream=True,
+                # extra_body={'enable_thinking': False,
+                #             "vl_high_resolution_images":True},
+                # response_format={"type": "json_object"}
+                response_format=MathResponse,
+                extra_body={
+                "thinking": {
+                    "type": AI_CONFIG["thinking_type"]  # 从配置文件获取深度思考设置
+                },
             },
-        },
-        )
+            )
+        except Exception as e:
+            log_print(f"API调用出错: {e}")
+            # 检查是否是因为用户主动停止
+            if should_exit:
+                log_print("用户主动停止了AI执行")
+            else:
+                log_print(f"API调用失败: {e}")
+            _global_client = None
+            return None
     # 如果不是火山引擎的url
     else:
         print(f"非火山引擎，模型是{API_CONFIG['model_name']}")
-        # completion = client.chat.completions.parse(
-        #     model=API_CONFIG["model_name"],  # 此处以doubao-1-5-ui-tars-250428为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
-        #     messages=[
-        #         {"role": "system",
-        #         "content": system_content},
-        #         {"role": "user",
-        #         "content": [{"type": "image_url",
-        #                     "image_url": {"url": image_data_url},},
-        #                     {"type": "text", "text": user_content}]}],
-        #     #stream=True,
-        #     # extra_body={'enable_thinking': False,
-        #     #             "vl_high_resolution_images":True},
-        #     # response_format={"type": "json_object"}
-        #     response_format=MathResponse,
-        #     # extra_body={
-        #     # "enable_thinking": False # 禁用思考模式
-        #     # },
-        # )
-        # 使用普通的 create 方法获取原始响应
-        completion_raw = client.chat.completions.create(
-            model=API_CONFIG["model_name"],
-            messages=[
-                {"role": "system",
-                "content": system_content},
-                {"role": "user",
-                "content": [{"type": "image_url",
-                            "image_url": {"url": image_data_url},},
-                            {"type": "text", "text": user_content}]}],
-        )
         
-        # 获取原始内容
-        raw_content = completion_raw.choices[0].message.content
-        log_print(f"AI 原始返回内容: {raw_content}")
+        # 检查是否收到中断信号
+        if should_exit:
+            log_print("检测到退出标志，取消API调用")
+            _global_client = None
+            return None
         
-        # 使用 parse_json 函数解析（会自动处理 markdown 标记）
-        parsed_json = parse_json(raw_content)
-        
-        if parsed_json:
-            log_print("手动解析成功！")
-            # 将解析后的 JSON 转换回字符串返回
-            return json.dumps(parsed_json, ensure_ascii=False)
-        else:
-            log_print("手动解析失败，无法处理 AI 返回的内容")
+        try:
+            # 使用普通的 create 方法获取原始响应
+            completion_raw = client.chat.completions.create(
+                model=API_CONFIG["model_name"],
+                messages=[
+                    {"role": "system",
+                    "content": system_content},
+                    {"role": "user",
+                    "content": [{"type": "image_url",
+                                "image_url": {"url": image_data_url},},
+                                {"type": "text", "text": user_content}]}],
+            )
+            
+            # 获取原始内容
+            raw_content = completion_raw.choices[0].message.content
+            log_print(f"AI 原始返回内容: {raw_content}")
+            
+            # 使用 parse_json 函数解析（会自动处理 markdown 标记）
+            parsed_json = parse_json(raw_content)
+            
+            # 清理全局客户端变量
+            _global_client = None
+            
+            if parsed_json:
+                log_print("手动解析成功！")
+                # 将解析后的 JSON 转换回字符串返回
+                return json.dumps(parsed_json, ensure_ascii=False)
+            else:
+                log_print("手动解析失败，无法处理 AI 返回的内容")
+                return None
+        except Exception as e:
+            log_print(f"API调用出错: {e}")
+            # 检查是否是因为用户主动停止
+            if should_exit:
+                log_print("用户主动停止了AI执行")
+            else:
+                log_print(f"API调用失败: {e}")
+            _global_client = None
             return None
 
     log_print(completion.choices[0].message.content)
+    
+    # 清理全局客户端变量
+    _global_client = None
+    
     return completion.choices[0].message.content
 
 
@@ -678,14 +736,21 @@ def auto_control_computer(user_content, max_visual_model_iterations=EXECUTION_CO
         if should_exit:
             log_print("检测到退出标志，停止循环...")
             return "程序已被用户中断"
+        
         log_print("\n")
         log_print(f"=================第 {i} 次循环===============")
         start_time = time.time()
         log_print("\n")
+        
         if i == 0:
             before_output = []
             before_content = ""
         else:
+            # 再次检查退出标志
+            if should_exit:
+                log_print("检测到退出标志，停止循环...")
+                return "程序已被用户中断"
+            
             # 添加新的记录到列表
             before_output.append(str(next_element))
             # 保持最多保存10条记录
@@ -696,6 +761,11 @@ def auto_control_computer(user_content, max_visual_model_iterations=EXECUTION_CO
             before_content = "之前的AI输出操作为: "+before_output_str+"\n"+"之前已完成的操作为:"+action_str
         
         try:
+            # 检查退出标志
+            if should_exit:
+                log_print("检测到退出标志，停止循环...")
+                return "程序已被用户中断"
+            
             success, scale = capture_screen_and_save(
                 save_path=SCREENSHOT_CONFIG["input_path"],
                 optimize_for_speed=SCREENSHOT_CONFIG["optimize_for_speed"],
@@ -710,6 +780,11 @@ def auto_control_computer(user_content, max_visual_model_iterations=EXECUTION_CO
             # log_print(is_page_loading_message)
 
             next_element = get_next_element(before_content+"\n"+user_content)
+            
+            # 检查退出标志（可能在API调用期间被设置）
+            if should_exit:
+                log_print("检测到退出标志，停止循环...")
+                return "程序已被用户中断"
 
             # 解析JSON响应
             if next_element:

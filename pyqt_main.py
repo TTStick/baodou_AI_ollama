@@ -488,8 +488,15 @@ class AIWindow(QWidget):
         self.ai_thread.ai_coordinate.connect(self.handle_ai_coordinate)
         
     def stop_ai(self):
-        # 设置全局变量，停止AI执行
-        vl_model_test_doubao2.should_exit = True
+        # 发送 Ctrl+C 信号（SIGINT）来停止AI执行
+        try:
+            # 这会触发 vl_model_test_doubao2 中的 signal_handler
+            vl_model_test_doubao2.stop_client()
+            # vl_model_test_doubao2.should_exit = True
+        except Exception as e:
+            # 如果发送信号失败，回退到设置全局变量
+            print(f"发送信号失败: {e}，使用备用方法")
+            vl_model_test_doubao2.should_exit = True
         
         # 更新状态
         self.status_label.setText('⏹️ 正在停止AI执行...')
