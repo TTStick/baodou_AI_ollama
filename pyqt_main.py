@@ -59,6 +59,7 @@ class AIWorker(QThread):
             time_str = time.strftime("%Y-%m-%d %H:%M", time.localtime())
             # 用户输入内容添加时间
             user_content2 = "当前时间为:"+time_str + "\n" + "用户任务为:"+self.user_content
+            print(f"=============用户输入内容为:{user_content2}")
             result = auto_control_computer(user_content2)
             self.finished.emit(result)
         except Exception as e:
@@ -453,11 +454,6 @@ class AIWindow(QWidget):
         # 重置退出标志
         vl_model_test_doubao2.should_exit = False
         
-        # 获取时间字符串，年月日时分
-        time_str = time.strftime("%Y-%m-%d %H:%M", time.localtime())
-        # 用户输入内容添加时间
-        user_content = "当前时间为:" + time_str + "\n" + "用户任务为:" + user_input
-        
         # 更新状态
         self.status_label.setText('🤖 AI正在执行中...')
         self.status_label.setStyleSheet("""
@@ -483,7 +479,7 @@ class AIWindow(QWidget):
         self.is_ai_controlling = True
         
         # 创建并启动AI线程
-        self.ai_thread = AIWorker(user_content)
+        self.ai_thread = AIWorker(user_input)
         self.ai_thread.finished.connect(self.ai_finished)
         self.ai_thread.error.connect(self.ai_error)
         self.ai_thread.start()
