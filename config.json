@@ -15,10 +15,12 @@
         "optimize_for_speed": true,
         "max_png": 1280,
         "input_path": "imgs/screen.png",
+        "previous_image_path": "imgs/previous.png",
         "output_path": "imgs/label"
     },
     "mouse_config": {
         "move_duration": 0.1,
-        "failsafe": false
+        "failsafe": false,
+        "map_coordinates_to_1000": false
     }
 }

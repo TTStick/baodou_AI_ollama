@@ -176,7 +176,7 @@ def mark_coordinate_on_image(coordinates, input_path=None, output_path=None, poi
         return False
 
 # 坐标映射
-def map_coordinates(x, y, scale, img_width=None, img_height=None):
+def map_coordinates(x, y, scale, img_width=None, img_height=None, enable_mapping=True):
     """
     将坐标映射到实际屏幕上
     
@@ -186,6 +186,7 @@ def map_coordinates(x, y, scale, img_width=None, img_height=None):
         scale: 图像缩放比例
         img_width: 图像实际宽度
         img_height: 图像实际高度
+        enable_mapping: 是否启用将坐标映射到1000*1000的逻辑
     
     返回:
         tuple: 实际屏幕上的坐标
@@ -194,8 +195,8 @@ def map_coordinates(x, y, scale, img_width=None, img_height=None):
     x = max(-100000, min(100000, x))
     y = max(-100000, min(100000, y))
     
-    # 如果提供了图像宽高，使用相对坐标到绝对坐标的转换公式
-    if img_width and img_height:
+    # 如果提供了图像宽高且启用了映射，使用相对坐标到绝对坐标的转换公式
+    if enable_mapping and img_width and img_height:
         # 将相对坐标转换为绝对坐标
         x_abs = (x / 1000) * img_width
         y_abs = (y / 1000) * img_height
