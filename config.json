@@ -21,6 +21,6 @@
     "mouse_config": {
         "move_duration": 0.1,
         "failsafe": false,
-        "map_coordinates_to_1000": false
+        "map_coordinates_to_1000": true
     }
 }
