@@ -1,5 +1,4 @@
-# 包豆电脑 - AI 智能控制系统
-
+基于豆包电脑AI智能控制系统 修改得到的支持ollama api的版本, api默认127.0.01:11434, 如果要修改的话在 pyqt_main.py ,vl_model_test_doubao2.py 中
 ## 项目简介
 
 ![软件图标](图标.jpg)
@@ -366,4 +365,5 @@ pyinstaller pyqt_main_mac.spec
 
 
 **感谢使用包豆电脑 AI 智能控制系统！** 🚀
+
 
