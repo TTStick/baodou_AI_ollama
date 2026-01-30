@@ -4,95 +4,97 @@ import pyautogui
 import os
 import time
 import platform
-import re
-import sys
-from mac_app_utils import is_mac_app, get_app_resource_path, get_resource_file_path, get_default_imgs_path
+from mac_app_utils import is_mac_app, get_resource_file_path, get_default_imgs_path
 
 def capture_screen_and_save(save_path=None, optimize_for_speed=True, max_png=1280):
     """
-    使用OpenCV实现自动截屏并保存到指定路径
-    
-    参数:
-        save_path: 保存路径，默认为"imgs/screen.png"（在Mac App环境下会自动调整为资源包路径）
-        optimize_for_speed: 是否优化速度（减少日志和使用更快的保存参数）
-        max_png: 图片最大尺寸限制
+    截屏并保存，同时计算Retina缩放因子和图片压缩比例
+    返回: (success, resize_scale, retina_scales)
     """
-    # 如果未提供save_path，使用默认路径
     if save_path is None:
         default_imgs_path = get_default_imgs_path()
         save_path = os.path.join(default_imgs_path, "screen.png")
-    # 如果是相对路径且是Mac App环境，则修改为资源包路径
     elif not os.path.isabs(save_path) and is_mac_app():
         save_path = get_resource_file_path(save_path)
-    # 创建输出目录（如果不存在）
+        
     output_dir = os.path.dirname(save_path)
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        if not optimize_for_speed:
-            print(f"创建文件夹: {output_dir}")
-    
+
     try:
-        if not optimize_for_speed:
-            print("正在执行截屏...")
-            start_time = time.time()
+        # 1. 获取屏幕逻辑尺寸 (即鼠标操作的坐标系)
+        screen_width, screen_height = pyautogui.size()
         
-        # 使用pyautogui进行截屏
+        # 2. 获取物理截图 (Retina屏上像素通常是逻辑尺寸的2倍)
         screenshot = pyautogui.screenshot()
-        
-        # 转换PIL图像为OpenCV格式（BGR）
         screenshot_np = np.array(screenshot)
         screenshot_bgr = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2BGR)
+        
+        # 3. 计算物理分辨率到逻辑分辨率的倍率 (Retina Factor)
+        physical_h, physical_w, _ = screenshot_bgr.shape
+        retina_scale_x = physical_w / screen_width
+        retina_scale_y = physical_h / screen_height
+        retina_scales = (retina_scale_x, retina_scale_y)
 
-        scale = 1
+        # 4. 图片压缩处理 (为了适应 Vision 模型输入限制)
+        resize_scale = 1.0
         if optimize_for_speed:
-            # # 将图片等比例缩小一半
-            # screenshot_bgr = cv2.resize(screenshot_bgr, None, fx=0.5, fy=0.5)
-            # 若图片的最长边大于max_png,则将最长边缩小为max_png,其他边等比缩小
             height, width, _ = screenshot_bgr.shape
             max_edge = max(height, width)
             if max_edge > max_png:
-                scale = max_png / max_edge
-                screenshot_bgr = cv2.resize(screenshot_bgr, None, fx=scale, fy=scale)
+                resize_scale = max_png / max_edge
+                screenshot_bgr = cv2.resize(screenshot_bgr, None, fx=resize_scale, fy=resize_scale)
             
-        # 使用更快的保存参数
+        # 5. 保存处理后的图片
+        # 使用低压缩级别(1)以提高保存速度
         save_params = [int(cv2.IMWRITE_PNG_COMPRESSION), 1] if optimize_for_speed else []
         success = cv2.imwrite(save_path, screenshot_bgr, save_params)
         
-        if success and not optimize_for_speed:
-            # 获取文件信息
-            file_size = os.path.getsize(save_path) / 1024  # KB
-            img_height, img_width, _ = screenshot_bgr.shape
-            
-            print(f"截屏成功！")
-            print(f"保存路径: {os.path.abspath(save_path)}")
-            print(f"图像尺寸: {img_width} x {img_height} 像素")
-            print(f"文件大小: {file_size:.2f} KB")
-            print(f"处理耗时: {(time.time() - start_time):.2f} 秒")
-        elif not success:
-            print("保存图像失败")
-            
-        return success, scale
+        return success, resize_scale, retina_scales
 
     except Exception as e:
-        print(f"截屏过程中发生错误: {e}")
-        return False, scale
+        print(f"截屏错误: {e}")
+        return False, 1.0, (1.0, 1.0)
+
+def draw_grid_on_image(image_path, output_path=None):
+    """
+    (新增) 在图片上绘制 10x10 网格，辅助 7B 模型定位
+    """
+    if output_path is None:
+        output_path = image_path
+        
+    try:
+        img = cv2.imread(image_path)
+        if img is None: return False
+        
+        h, w, _ = img.shape
+        overlay = img.copy()
+        
+        # 网格设置: 绿色细线
+        grid_color = (0, 255, 0) 
+        step_x = w / 10
+        step_y = h / 10
+        
+        # 绘制网格线
+        for i in range(1, 10):
+            x = int(i * step_x)
+            cv2.line(overlay, (x, 0), (x, h), grid_color, 1)
+            y = int(i * step_y)
+            cv2.line(overlay, (0, y), (w, y), grid_color, 1)
+            
+        # 融合图片 (0.3 透明度，避免遮挡文字)
+        cv2.addWeighted(overlay, 0.3, img, 0.7, 0, img)
+        
+        cv2.imwrite(output_path, img)
+        return True
+    except Exception as e:
+        print(f"绘制网格失败: {e}")
+        return False
 
 def mark_coordinate_on_image(coordinates, input_path=None, output_path=None, point_radius=10, point_color=(0, 0, 255), thickness=-1):
     """
     在图片上标记指定坐标点
-    
-    参数:
-        coordinates: tuple或list，坐标点(x, y)或两个坐标点[[x1, y1], [x2, y2]]
-        input_path: 输入图片路径（在Mac App环境下会自动调整为资源包路径）
-        output_path: 输出图片路径（在Mac App环境下会自动调整为资源包路径）
-        point_radius: 标记点的半径
-        point_color: 标记点的颜色，使用BGR格式，默认为红色(0, 0, 255)
-        thickness: 线条粗细，-1表示填充
-    
-    返回:
-        bool: 标记成功返回True，失败返回False
     """
-    # 处理默认路径
     default_imgs_path = get_default_imgs_path()
     
     if input_path is None:
@@ -104,141 +106,73 @@ def mark_coordinate_on_image(coordinates, input_path=None, output_path=None, poi
         output_path = os.path.join(default_imgs_path, "screen_label.png")
     elif not os.path.isabs(output_path) and is_mac_app():
         output_path = get_resource_file_path(output_path)
+        
     try:
-        # 检查输入文件是否存在
         if not os.path.exists(input_path):
             return False
         
-        # 读取图片
         image = cv2.imread(input_path)
         if image is None:
             return False
         
-        # 获取图片尺寸
         img_height, img_width = image.shape[:2]
-        
-        # 处理坐标点
         points_to_mark = []
         
-        if isinstance(coordinates[0], list) or isinstance(coordinates[0], tuple):
-            # 两个坐标点 [[x1, y1], [x2, y2]]
+        if isinstance(coordinates[0], (list, tuple)):
             for coord in coordinates:
-                if isinstance(coord, (list, tuple)) and len(coord) == 2:
+                if len(coord) == 2:
                     x, y = int(coord[0]), int(coord[1])
-                    # 检查坐标是否在图片范围内
                     if 0 <= x < img_width and 0 <= y < img_height:
                         points_to_mark.append((x, y))
         else:
-            # 单点坐标 [x, y]
             if len(coordinates) == 2:
                 x, y = int(coordinates[0]), int(coordinates[1])
-                # 检查坐标是否在图片范围内
                 if 0 <= x < img_width and 0 <= y < img_height:
                     points_to_mark.append((x, y))
         
         if not points_to_mark:
             return False
         
-        # 在图片上标记所有有效坐标点
         for i, (x, y) in enumerate(points_to_mark):
-            # 在图片上画圆标记点
             cv2.circle(image, (x, y), point_radius, point_color, thickness)
             
             # 添加坐标文本
-            if len(points_to_mark) == 1:
-                text = f"({x}, {y})"
-            else:
-                text = f"P{i+1} ({x}, {y})"
-            
+            text = f"({x}, {y})" if len(points_to_mark) == 1 else f"P{i+1} ({x}, {y})"
             font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 1
-            font_color = (0, 0, 255)
-            font_thickness = 2
-            
-            # 文本位置在点的上方一点，对于多个点，错开一点位置
             offset = i * 40
-            text_position = (x - 30 + offset, y - 20)
-            cv2.putText(image, text, text_position, font, font_scale, font_color, font_thickness)
+            text_position = (max(0, x - 30 + offset), max(20, y - 20))
+            cv2.putText(image, text, text_position, font, 1, (0, 0, 255), 2)
         
-        # 创建输出目录（如果不存在）
         output_dir = os.path.dirname(output_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
-        # 保存标记后的图片，使用低压缩级别加快保存速度
-        save_params = [int(cv2.IMWRITE_PNG_COMPRESSION), 1]
-        success = cv2.imwrite(output_path, image, save_params)
-        
-        return success
+        cv2.imwrite(output_path, image, [int(cv2.IMWRITE_PNG_COMPRESSION), 1])
+        return True
             
     except Exception as e:
-        # 静默处理错误以提高速度
+        print(f"标记坐标错误: {e}")
         return False
 
-# 坐标映射
-def map_coordinates(x, y, scale, img_width=None, img_height=None, enable_mapping=True):
+def map_coordinates(x, y, resize_scale, retina_scales, img_width, img_height):
     """
-    将坐标映射到实际屏幕上
-    
+    (核心修改) 将模型输出的归一化坐标映射回屏幕逻辑坐标
     参数:
-        x: 输入的x坐标（相对坐标，归一化至1000）
-        y: 输入的y坐标（相对坐标，归一化至1000）
-        scale: 图像缩放比例
-        img_width: 图像实际宽度
-        img_height: 图像实际高度
-        enable_mapping: 是否启用将坐标映射到1000*1000的逻辑
-    
-    返回:
-        tuple: 实际屏幕上的坐标
+        x, y: 模型输出的归一化坐标 (0-1000)
+        resize_scale: 图片压缩缩放比
+        retina_scales: (x_scale, y_scale) 物理/逻辑像素比
+        img_width, img_height: 输入给模型的图片实际宽高
     """
-    # 确保坐标值在合理范围内
-    x = max(-100000, min(100000, x))
-    y = max(-100000, min(100000, y))
+    # 1. 归一化坐标 (0-1000) -> 压缩图像素坐标
+    pixel_x = (x / 1000.0) * img_width
+    pixel_y = (y / 1000.0) * img_height
     
-    # 如果提供了图像宽高且启用了映射，使用相对坐标到绝对坐标的转换公式
-    if enable_mapping and img_width and img_height:
-        # 将相对坐标转换为绝对坐标
-        x_abs = (x / 1000) * img_width
-        y_abs = (y / 1000) * img_height
-    else:
-        # 保持原有逻辑，直接除以缩放比例
-        x_abs = x
-        y_abs = y
+    # 2. 压缩图像素 -> 原始截图(物理)像素
+    original_pixel_x = pixel_x / resize_scale
+    original_pixel_y = pixel_y / resize_scale
     
-    # 应用缩放比例映射到实际屏幕
-    x_r = x_abs / scale
-    y_r = y_abs / scale
+    # 3. 原始截图像素 -> 屏幕逻辑坐标 (pyautogui 使用的坐标)
+    screen_x = original_pixel_x / retina_scales[0]
+    screen_y = original_pixel_y / retina_scales[1]
     
-    # 确保最终坐标在有效范围内
-    x_r = max(0, min(100000, x_r))
-    y_r = max(0, min(100000, y_r))
-    
-    return x_r, y_r
-
-
-def main():
-    """
-    主函数，执行截屏操作和坐标标记测试
-    """
-    print("=== OpenCV 截屏工具 ===")
-    
-    # 执行截屏
-    capture_screen_and_save()
-    
-    # # 测试坐标标记功能
-    # print("\n=== 测试坐标标记功能 ===")
-    # # 使用示例坐标 (837, 877) - 这是之前vl_model_test.py中识别出的AI输入框位置
-    # test_coordinates = (837, 877)
-    # print(f"将在图片上标记坐标: {test_coordinates}")
-    
-    # # 调用坐标标记函数
-    # success = mark_coordinate_on_image(test_coordinates)
-    
-    # if success:
-    #     print("坐标标记测试成功完成！")
-    # else:
-    #     print("坐标标记测试失败，请检查错误信息")
-
-if __name__ == "__main__":
-    time.sleep(5)
-    main()
+    return int(screen_x), int(screen_y)
